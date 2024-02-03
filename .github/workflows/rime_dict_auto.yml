@@ -1,0 +1,97 @@
+name: Rime Dictionary Build
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: set env
+      run: |
+        echo "short_time=$(date "+%Y-%m-%d")" >> $GITHUB_ENV
+        echo "TAG_NAME=$(curl --silent https://api.github.com/repos/gshang2017/rime-dict/releases/latest | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')" >> $GITHUB_ENV
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt install -y git wget
+
+    - name: Download imewlconverter
+      run: |
+        wget https://github.com/gshang2017/rime-dict/releases/download/${{ env.TAG_NAME }}/v3.0.0_imewlconverter_Linux_Mac.tar.gz
+        mkdir -p imewlconverter
+        tar -zxf v3.0.0_imewlconverter_Linux_Mac.tar.gz -C imewlconverter
+
+    - name: Download rime-dict database
+      run: |
+        wget https://github.com/gshang2017/rime-dict/releases/download/${{ env.TAG_NAME }}/dict.tar.gz
+        tar -zxf dict.tar.gz
+
+    - name: Install dependencies for rime-dict
+      run: |
+        sudo apt install python3-pip
+        sudo pip install --upgrade setuptools==57.5.0
+        sudo pip install -r requirements.txt
+        sudo apt install -y opencc
+        wget https://packages.microsoft.com/config/ubuntu/20.04/packages-microsoft-prod.deb -O packages-microsoft-prod.deb
+        sudo dpkg -i packages-microsoft-prod.deb
+        rm packages-microsoft-prod.deb
+        sudo apt-get update
+        sudo apt install -y dotnet-sdk-6.0
+
+    - name: Update Sogou dictionary and frequency
+      run: |
+        python3 sogou_dict.py
+        python3 dict_frequency_ai.py
+
+    - name: Generate input method files
+      run: |
+        export SOGOU_OFFICIAL=True
+        export SOGOU_SINGLE_FILE=True
+        export SOGOU_OFFICIAL_TOTAL=True
+        export TENGXUN_FREQ=True
+        export ENGLISH_DICT=True
+        export ENGLISH_CHARACTER_ENCODING=True
+        export LEN_NUM=7
+        export PREFIX_DICT_NAME=
+        export LETTERED_WORD_DICT=True
+        export WIKI_DICT=True
+        export CHAIZI_DICT=True
+        export IMEWLCONVERTER=False
+        python3 rime_dict.py
+        cd /home/runner/work/rime-dict/rime-dict/output
+        tar -zcf rime-dict.txt.tar.gz *.txt
+        tar -zcf rime-dict.yaml.tar.gz *.yaml
+        #仅含有腾讯词频的词库(搜狗推荐词库除外)，合并搜狗非推荐词库
+        rm -rf /home/runner/work/rime-dict/rime-dict/output/*.txt
+        rm -rf /home/runner/work/rime-dict/rime-dict/output/*.yaml
+        cd /home/runner/work/rime-dict/rime-dict/
+        export SOGOU_SINGLE_FILE=False
+        export NON_TENGXUN_DEL=True
+        python3 rime_dict.py
+        cd /home/runner/work/rime-dict/rime-dict/output
+        tar -zcf rime-dict-non-tengxun-del.txt.tar.gz *.txt
+        tar -zcf rime-dict-non-tengxun-del.yaml.tar.gz *.yaml
+
+    - name: Release
+      uses: softprops/action-gh-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        draft: false
+        prerelease: false
+        tag_name: "${{ env.short_time }}"
+        files: |
+          /home/runner/work/rime-dict/rime-dict/dict.tar.gz
+          /home/runner/work/rime-dict/rime-dict/output/rime-dict.yaml.tar.gz
+          /home/runner/work/rime-dict/rime-dict/output/rime-dict.txt.tar.gz
+          /home/runner/work/rime-dict/rime-dict/output/rime-dict-non-tengxun-del.yaml.tar.gz
+          /home/runner/work/rime-dict/rime-dict/output/rime-dict-non-tengxun-del.txt.tar.gz
+          /home/runner/work/rime-dict/rime-dict/imewlconverter-3.0.0/src/ImeWlConverterCmd/bin/Debug/net6.0/v${{ env.IMEWLCONVERTER_VER }}_imewlconverter_Linux_Mac.tar.gz

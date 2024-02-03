@@ -46,14 +46,15 @@ def download_sogou_url():
                 page_num = 1
             #检查是否需要更新文件
             #检查最后一个词库
-            url_end_check = 'https://pinyin.sogou.com' + str(order_way_num) + '/' + page_num
+            url_end_check = 'https://pinyin.sogou.com' + str(order_way_num) + '/' + str(page_num)
             time.sleep(random.randint(0,3))
             r_end_check = requests.get(url_end_check,headers=headers)
             soup_end_check = BeautifulSoup(r_end_check.text,'lxml')
             #细胞词名称
             detail_title_list_end_check = soup_end_check.find_all("div", {"class": "detail_title"})
             end_num = len(detail_title_list_end_check)
-            end_dict_url = detail_title_list_end_check[end_num-1].a.get('href')
+            if detail_title_list_end_check:
+                end_dict_url = detail_title_list_end_check[end_num-1].a.get('href')
             cursor.execute("SELECT dict_url FROM status WHERE dict_url='%s'" %(end_dict_url))
             end_dict_name_len = len(cursor.fetchall())
             #检查第一个词库
